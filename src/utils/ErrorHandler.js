@@ -9,10 +9,17 @@ const makeTime = () => {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 };
 
+/* Sanitizes error messages to mask sensitive environment variable names before logging */
+const sanitizeErrorMessage = (msg) => {
+  // Mask environment variable names containing sensitive keywords
+  return msg.replace(/\b(VUE_APP_)?([A-Z0-9_-]*(PASSWORD|SECRET|TOKEN)[A-Z0-9_-]*)\b/g, '[REDACTED_ENV]');
+};
+
 /* Appends recent errors to local storage, for viewing in the UI */
 const appendToErrorLog = (msg) => {
   let errorLog = sessionStorage.getItem(sessionStorageKeys.ERROR_LOG) || '';
-  errorLog += `[${makeTime()}] ${msg}\n`;
+  const sanitizedMsg = sanitizeErrorMessage(msg);
+  errorLog += `[${makeTime()}] ${sanitizedMsg}\n`;
   sessionStorage.setItem(sessionStorageKeys.ERROR_LOG, errorLog);
 };
 
