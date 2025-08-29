@@ -32,18 +32,43 @@ module.exports = (req, res) => {
   if (!targetURL) {
     res.status(400).send({ error: 'Missing Target-URL header in the request' });
     return;
-  let hostname;
+  }
+  let parsed;
   try {
-    const parsed = new URL(targetURL);
-    hostname = parsed.hostname;
+    parsed = new URL(targetURL);
   } catch (e) {
     res.status(400).send({ error: 'Invalid Target-URL format' });
     return;
   }
+  const hostname = parsed.hostname;
   if (!ALLOWED_HOSTNAMES.includes(hostname)) {
     res.status(403).send({ error: 'Target hostname is not allowed' });
     return;
   }
+  // Only allow https protocol (could allow http if strictly necessary)
+  if (parsed.protocol !== 'https:') {
+    res.status(400).send({ error: 'Only HTTPS protocol is allowed' });
+    return;
+  }
+  // Optionally, only allow default port
+  if (parsed.port && parsed.port !== '443') {
+    res.status(400).send({ error: 'Only default HTTPS port (443) is allowed' });
+    return;
+  }
+  // Disallow path traversal in path
+  if (parsed.pathname.includes('..')) {
+    res.status(400).send({ error: 'Path traversal is not allowed in the URL path' });
+    return;
+  }
+  // Optionally, reject URLs with userinfo
+  if (parsed.username || parsed.password) {
+    res.status(400).send({ error: 'User information in URL is not allowed' });
+    return;
+  }
+  // Optionally, reject fragments
+  if (parsed.hash && parsed.hash !== "") {
+    res.status(400).send({ error: 'URL fragments are not allowed' });
+    return;
   }
   // Apply any custom headers, if needed
   const headers = req.header('CustomHeaders') ? JSON.parse(req.header('CustomHeaders')) : {};
@@ -51,7 +76,7 @@ module.exports = (req, res) => {
   // Prepare the request
   const requestConfig = {
     method: req.method,
-    url: targetURL,
+    url: parsed.origin + parsed.pathname + parsed.search,
     json: req.body,
     headers,
   };
