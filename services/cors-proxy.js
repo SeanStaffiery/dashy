@@ -5,7 +5,14 @@
  */
 
 const axios = require('axios');
+const { URL } = require('url');
 
+// Define allow-list of permitted hostnames
+const ALLOWED_HOSTNAMES = [
+  'api.example.com',
+  'service.example.net',
+  // Add more hostnames as needed
+];
 module.exports = (req, res) => {
   // Apply allow-all response headers
   res.header('Access-Control-Allow-Origin', '*');
@@ -23,8 +30,20 @@ module.exports = (req, res) => {
   // Get desired URL, from Target-URL header
   const targetURL = req.header('Target-URL');
   if (!targetURL) {
-    res.status(500).send({ error: 'There is no Target-Endpoint header in the request' });
+    res.status(400).send({ error: 'Missing Target-URL header in the request' });
     return;
+  let hostname;
+  try {
+    const parsed = new URL(targetURL);
+    hostname = parsed.hostname;
+  } catch (e) {
+    res.status(400).send({ error: 'Invalid Target-URL format' });
+    return;
+  }
+  if (!ALLOWED_HOSTNAMES.includes(hostname)) {
+    res.status(403).send({ error: 'Target hostname is not allowed' });
+    return;
+  }
   }
   // Apply any custom headers, if needed
   const headers = req.header('CustomHeaders') ? JSON.parse(req.header('CustomHeaders')) : {};
