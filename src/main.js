@@ -1,7 +1,7 @@
 /* eslint-disable no-multi-spaces */
 // Import core framework and essential utils
-import Vue from 'vue';
-import VueI18n from 'vue-i18n'; // i18n for localization
+import { createApp } from 'vue';
+import { createI18n } from 'vue-i18n'; // i18n for localization
 
 // Import component Vue plugins, used throughout the app
 import VTooltip from 'v-tooltip';       // A Vue directive for Popper.js, tooltip component
@@ -26,42 +26,47 @@ import { initOidcAuth, isOidcEnabled } from '@/utils/OidcAuth';
 import Keys from '@/utils/StoreMutations';
 import ErrorHandler from '@/utils/ErrorHandler';
 
-// Initialize global Vue components
-Vue.use(VueI18n);
-Vue.use(VTooltip, tooltipOptions);
-Vue.use(VModal);
-Vue.use(VTabs);
-Vue.use(TreeView);
-Vue.use(Toasted, toastedOptions);
-Vue.component('v-select', VSelect);
-Vue.directive('clickOutside', clickOutside);
-
 // When running in dev mode, enable Vue performance tools
 const isDevMode = process.env.NODE_ENV === 'development';
-Vue.config.performance = isDevMode;
-Vue.config.productionTip = isDevMode;
 
-// Setup i18n translations
-const i18n = new VueI18n({
+// Setup i18n translations (vue-i18n v9)
+const i18n = createI18n({
   locale: defaultLanguage,
   fallbackLocale: defaultLanguage,
   messages,
 });
 
+// Create app and register plugins
+const app = createApp(Dashy);
+
+app.use(store);
+app.use(router);
+app.use(i18n);
+
+app.use(VTooltip, tooltipOptions);
+app.use(VModal);
+app.use(VTabs);
+app.use(TreeView);
+app.use(Toasted, toastedOptions);
+
+app.component('v-select', VSelect);
+app.directive('clickOutside', clickOutside);
+
+// Vue 3 config flags
+if (isDevMode) {
+  app.config.performance = true;
+}
+
 // Checks if service worker not disable, and if so will registers it
 serviceWorker();
 
 // Checks if user enabled error reporting, and if so will initialize it
-ErrorReporting(Vue, router);
+ErrorReporting(app, router);
 
-// Render function
-const render = (awesome) => awesome(Dashy);
+// Mount helper
+const mount = () => app.mount('#app');
 
-// Mount the app, with router, store i18n and render func
-const mount = () => new Vue({
-  store, router, render, i18n,
-}).$mount('#app');
-
+// Initialize configuration and then mount with any required authentication
 store.dispatch(Keys.INITIALIZE_CONFIG).then(() => {
   if (isOidcEnabled()) {
     initOidcAuth()
