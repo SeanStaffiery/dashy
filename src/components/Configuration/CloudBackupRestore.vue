@@ -141,20 +141,25 @@ export default {
         });
     },
     /* For create / update a backup- checks pass is valid, then calls makeBackup */
-    checkPass() {
+    async checkPass() {
       const savedHash = localStorage[localStorageKeys.BACKUP_HASH] || undefined;
+      const savedSalt = localStorage[localStorageKeys.BACKUP_SALT] || undefined;
       if (!this.backupPassword) {
         this.showErrorMsg(this.$t('cloud-sync.backup-missing-password'));
-      } else if (!savedHash) {
-        this.makeBackup();
-      } else if (savedHash === this.makeHash(this.backupPassword)) {
-        this.makeUpdate();
+      } else if (!savedHash || !savedSalt) {
+        await this.makeBackup();
       } else {
-        this.showErrorMsg(this.$t('cloud-sync.backup-error-password'));
+        // Derive hash from entered password and compare with stored
+        const { hash } = await this.makeHash(this.backupPassword, savedSalt);
+        if (savedHash === hash) {
+          await this.makeUpdate();
+        } else {
+          this.showErrorMsg(this.$t('cloud-sync.backup-error-password'));
+        }
       }
     },
     /* When restored data is revieved, then save to local storage, and apply it in state */
-    applyRestoredData(config, backupId) {
+    async applyRestoredData(config, backupId) {
       const isSubPage = !!this.$store.state.currentConfigInfo.confId;
       if (isSubPage) { // Apply to sub-page only
         const subConfigId = this.$store.state.currentConfigInfo.confId;
@@ -174,15 +179,15 @@ export default {
         }
       }
       // Save hashed token in local storage
-      this.setBackupIdLocally(backupId, this.restorePassword);
+      await this.setBackupIdLocally(backupId, this.restorePassword);
       // Update the current state
       this.$store.commit(StoreKeys.SET_CONFIG, config);
       // Show success message
       this.showSuccessMsg(this.$t('cloud-sync.restore-success-msg'));
     },
     /* After backup/ update is made, then replace 'Make Backup' with 'Update Backup' */
-    updateUiAfterBackup(backupId, isUpdate = false) {
-      this.setBackupIdLocally(backupId, this.backupPassword);
+    async updateUiAfterBackup(backupId, isUpdate = false) {
+      await this.setBackupIdLocally(backupId, this.backupPassword);
       this.showSuccessMsg(
         `${isUpdate ? 'Update' : 'Backup'} ${this.$t('cloud-sync.backup-success-msg')}`,
       );
@@ -199,13 +204,68 @@ export default {
       this.$toasted.show(msg, { className: 'toast-success' });
     },
     /* Call to hash function, to hash the users chosen/ entered password */
-    makeHash(pass) {
-      return sha256(pass).toString();
+    /**
+     * Securely derives a hash from a password using PBKDF2 via the WebCrypto API.
+     * Returns a Promise that resolves to {hash: base64, salt: base64}
+     * If provided, usedSalt (base64) will be used instead of generating a new one.
+     */
+    async makeHash(pass, usedSalt) {
+      const encoder = new TextEncoder();
+      const salt = usedSalt ? this.base64ToArrayBuffer(usedSalt) : window.crypto.getRandomValues(new Uint8Array(16));
+      const keyMaterial = await window.crypto.subtle.importKey(
+        "raw",
+        encoder.encode(pass),
+        { name: "PBKDF2" },
+        false,
+        ["deriveBits", "deriveKey"]
+      );
+      const derivedBits = await window.crypto.subtle.deriveBits(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: 100000,
+          hash: "SHA-256"
+        },
+        keyMaterial,
+        256
+      );
+      // Output as a base64 string and the (base64) salt
+      return {
+        hash: this.arrayBufferToBase64(derivedBits),
+        salt: this.arrayBufferToBase64(salt)
+      };
+    // Converts ArrayBuffer to base64 string
+    arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    },
+    // Converts base64 string to ArrayBuffer
+    base64ToArrayBuffer(base64) {
+      const binary = window.atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    },
     },
     /* After backup is applied, hash the backup ID, and save in browser storage */
-    setBackupIdLocally(backupId, pass) {
+    async setBackupIdLocally(backupId, pass) {
       this.backupId = backupId;
-      const hash = this.makeHash(pass);
+      if (!pass) {
+        // Clean up if no password supplied
+        localStorage.removeItem(localStorageKeys.BACKUP_HASH);
+        localStorage.removeItem(localStorageKeys.BACKUP_SALT);
+        localStorage.setItem(localStorageKeys.BACKUP_ID, backupId);
+        return;
+      }
+      const { hash, salt } = await this.makeHash(pass);
+      localStorage.setItem(localStorageKeys.BACKUP_SALT, salt);
       localStorage.setItem(localStorageKeys.BACKUP_ID, backupId);
       localStorage.setItem(localStorageKeys.BACKUP_HASH, hash);
     },
