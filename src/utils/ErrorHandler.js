@@ -27,7 +27,14 @@ const sanitizeErrorMessage = (msg) => {
 /* Appends recent errors to local storage, for viewing in the UI */
 const appendToErrorLog = (msg) => {
   let errorLog = sessionStorage.getItem(sessionStorageKeys.ERROR_LOG) || '';
-  const sanitizedMsg = sanitizeErrorMessage(msg);
+  let sanitizedMsg = sanitizeErrorMessage(msg);
+  // If message still contains possibly sensitive fragments after sanitization, redact completely
+  if (
+    /\b(VUE_APP_)?([A-Z0-9_-]*(PASSWORD|SECRET|TOKEN)[A-Z0-9_-]*)\b/i.test(sanitizedMsg)
+    || /[REDACTED_ENV]/.test(sanitizedMsg)
+  ) {
+    sanitizedMsg = '[REDACTED]';
+  }
   errorLog += `[${makeTime()}] ${sanitizedMsg}\n`;
   sessionStorage.setItem(sessionStorageKeys.ERROR_LOG, errorLog);
 };
