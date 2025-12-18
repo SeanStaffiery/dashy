@@ -6,13 +6,17 @@
 
 const axios = require('axios');
 const { URL } = require('url');
+const punycode = require('punycode/'); // Punycode for IDN normalization
 
-// Define allow-list of permitted hostnames
-const ALLOWED_HOSTNAMES = [
+// Define allow-list of permitted hostnames, normalized to lower-case punycode
+const RAW_ALLOWED_HOSTNAMES = [
   'api.example.com',
   'service.example.net',
   // Add more hostnames as needed
 ];
+const ALLOWED_HOSTNAMES = RAW_ALLOWED_HOSTNAMES.map(h =>
+  punycode.toASCII(h.toLowerCase().replace(/\.+$/, '')) // Normalize and trim trailing dots
+);
 module.exports = (req, res) => {
   // Apply allow-all response headers
   res.header('Access-Control-Allow-Origin', '*');
@@ -40,7 +44,9 @@ module.exports = (req, res) => {
     res.status(400).send({ error: 'Invalid Target-URL format' });
     return;
   }
-  const hostname = parsed.hostname;
+  let hostname = parsed.hostname || '';
+  // Canonicalize for comparison: lower-case, punycode, remove trailing dots
+  hostname = punycode.toASCII(hostname.toLowerCase().replace(/\.+$/, ''));
   if (!ALLOWED_HOSTNAMES.includes(hostname)) {
     res.status(403).send({ error: 'Target hostname is not allowed' });
     return;
