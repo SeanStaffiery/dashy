@@ -11,8 +11,17 @@ const makeTime = () => {
 
 /* Sanitizes error messages to mask sensitive environment variable names before logging */
 const sanitizeErrorMessage = (msg) => {
-  // Mask environment variable names containing sensitive keywords
-  return msg.replace(/\b(VUE_APP_)?([A-Z0-9_-]*(PASSWORD|SECRET|TOKEN)[A-Z0-9_-]*)\b/g, '[REDACTED_ENV]');
+  // Mask environment variable names and their values containing sensitive keywords
+  let sanitized = msg
+    // Match patterns like MY_PASSWORD=something, MY_TOKEN:abc... or for MY_PASSWORD (and similar) in the message
+    .replace(/\b(VUE_APP_)?([A-Z0-9_-]*(PASSWORD|SECRET|TOKEN)[A-Z0-9_-]*)\s*[:=]\s*([^\s,;"']+)/gi, '[REDACTED_ENV]=[REDACTED]')
+    // Mask names only (if values not provided)
+    .replace(/\b(VUE_APP_)?([A-Z0-9_-]*(PASSWORD|SECRET|TOKEN)[A-Z0-9_-]*)\b/gi, '[REDACTED_ENV]')
+    // Also mask values shown in quotes after known keys: for example: 'Missing environmental variable for MY_PASSWORD'
+    .replace(/(for|of)\s+\[REDACTED_ENV\]([^\s,;"']*)/gi, 'for [REDACTED_ENV]')
+    // Mask common JSON key-value leaks: "token":"something", 'secret' : 'aaaa'
+    .replace(/"?(password|secret|token)"?\s*[:=]\s*"?([^",\s}]*)"?/gi, '"$1":"[REDACTED]"');
+  return sanitized;
 };
 
 /* Appends recent errors to local storage, for viewing in the UI */
