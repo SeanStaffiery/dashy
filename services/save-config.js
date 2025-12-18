@@ -45,7 +45,7 @@ module.exports = async (newConfig, render) => {
   const writeFileOptions = { encoding: 'utf8' };
 
   // Prepare the response returned by the API
-  const getRenderMessage = (success, errorMsg) => JSON.stringify({
+  const getRenderMessage = (success, errorMsg) => ({
     success,
     message: !success ? errorMsg : getSuccessMessage(),
   });
