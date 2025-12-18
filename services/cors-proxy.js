@@ -61,8 +61,9 @@ module.exports = (req, res) => {
     res.status(400).send({ error: 'Only default HTTPS port (443) is allowed' });
     return;
   }
-  // Disallow path traversal in path
-  if (parsed.pathname.includes('..')) {
+  // Disallow path traversal in path (also catch URL-encoded traversal)
+  const decodePath = decodeURIComponent(parsed.pathname);
+  if (parsed.pathname.includes('..') || decodePath.includes('..')) {
     res.status(400).send({ error: 'Path traversal is not allowed in the URL path' });
     return;
   }
@@ -76,14 +77,22 @@ module.exports = (req, res) => {
     res.status(400).send({ error: 'URL fragments are not allowed' });
     return;
   }
-  // Apply any custom headers, if needed
-  const headers = req.header('CustomHeaders') ? JSON.parse(req.header('CustomHeaders')) : {};
+  // Apply any custom headers, if needed; fail on parse error
+  let headers = {};
+  if (req.header('CustomHeaders')) {
+    try {
+      headers = JSON.parse(req.header('CustomHeaders'));
+    } catch (e) {
+      res.status(400).send({ error: 'Malformed CustomHeaders JSON' });
+      return;
+    }
+  }
 
   // Prepare the request
   const requestConfig = {
     method: req.method,
     url: parsed.origin + parsed.pathname + parsed.search,
-    json: req.body,
+    data: req.body,
     headers,
   };
 
