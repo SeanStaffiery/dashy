@@ -156,7 +156,7 @@ const app = express()
   // POST Endpoint used to save config, by writing config file to disk
   .use(ENDPOINTS.save, method('POST', (req, res) => {
     try {
-      saveConfig(req.body, (results) => { res.end(results); });
+      saveConfig(req.body, (results) => { res.json(results); });
       config = req.body.config; // update the config
     } catch (e) {
       printWarning('Error writing config file to disk', e);
