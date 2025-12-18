@@ -1,4 +1,4 @@
-import sha256 from 'crypto-js/sha256';
+import bcrypt from 'bcryptjs';
 import ConfigAccumulator from '@/utils/ConfigAccumalator';
 import ErrorHandler from '@/utils/ErrorHandler';
 import { cookieKeys, localStorageKeys, userStateEnum } from '@/utils/defaults';
@@ -133,7 +133,7 @@ export const checkCredentials = (username, pass, users, messages) => {
           } else {
             response = { correct: false, msg: messages.incorrectPassword };
           }
-        } else if (user.hash && user.hash.toLowerCase() === sha256(pass).toString().toLowerCase()) {
+        } else if (user.hash && bcrypt.compareSync(pass, user.hash)) {
           response = { correct: true, msg: messages.successMsg }; // Password is correct
         } else { // User found, but password is not a match
           response = { correct: false, msg: messages.incorrectPassword };
@@ -153,7 +153,8 @@ export const checkCredentials = (username, pass, users, messages) => {
 export const login = (username, pass, timeout) => {
   const now = new Date();
   const expiry = new Date(now.setTime(now.getTime() + timeout)).toGMTString();
-  const userObject = { user: username, hash: sha256(pass).toString().toLowerCase() };
+  const salt = bcrypt.genSaltSync(10);
+  const userObject = { user: username, hash: bcrypt.hashSync(pass, salt) };
   document.cookie = `${cookieKeys.AUTH_TOKEN}=${generateUserToken(userObject)};`
     + `${timeout > 0 ? `expires=${expiry}` : ''}`;
   localStorage.setItem(localStorageKeys.USERNAME, username);
