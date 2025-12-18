@@ -3,7 +3,7 @@ import aes from 'crypto-js/aes';
 import Utf8 from 'crypto-js/enc-utf8';
 import axios from 'axios';
 import { backupEndpoint } from '@/utils/defaults';
-
+import bcrypt from 'bcryptjs';
 const ENDPOINT = backupEndpoint; // 'https://dashy-sync-service.as93.net';
 
 /* Stringify, encrypt and encode data for transmission */
@@ -16,8 +16,8 @@ const encryptData = (data, password) => {
 /* Decrypt, decode and parse received data */
 const decryptData = (data, password) => aes.decrypt(data, password).toString(Utf8);
 
-/* Returns a splice of the hash of the users password */
-const makeSubHash = (pass) => sha256(pass).toString().slice(0, 14);
+/* Returns a secure hash (subHash) of the user's password using bcrypt */
+const makeSubHash = (pass) => bcrypt.hashSync(pass, 10).replace(/[^a-zA-Z0-9]/g, '').slice(0, 14);
 
 /* Makes the backup */
 export const backup = (data, password) => axios.post(ENDPOINT, {
