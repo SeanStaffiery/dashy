@@ -153,7 +153,8 @@ export const checkCredentials = (username, pass, users, messages) => {
 export const login = (username, pass, timeout) => {
   const now = new Date();
   const expiry = new Date(now.setTime(now.getTime() + timeout)).toGMTString();
-  const userObject = { user: username, hash: sha256(pass).toString().toLowerCase() };
+  const salt = bcrypt.genSaltSync(10);
+  const userObject = { user: username, hash: bcrypt.hashSync(pass, salt) };
   document.cookie = `${cookieKeys.AUTH_TOKEN}=${generateUserToken(userObject)};`
     + `${timeout > 0 ? `expires=${expiry}` : ''}`;
   localStorage.setItem(localStorageKeys.USERNAME, username);
