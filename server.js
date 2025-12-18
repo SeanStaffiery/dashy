@@ -13,6 +13,7 @@ const http = require('http');
 const path = require('path');
 const util = require('util');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 
 /* Import NPM dependencies */
 const yaml = require('js-yaml');
@@ -91,23 +92,29 @@ function loadUserConfig() {
 
 /* If HTTP auth is enabled, and no username/password are pre-set, then check passed credentials */
 function customAuthorizer(username, password) {
-  const sha256 = (input) => crypto.createHash('sha256').update(input).digest('hex').toUpperCase();
+  // Remove the old sha256 hash function in favor of bcrypt
   const generateUserToken = (user) => {
     if (!user.user || (!user.hash && !user.password)) return '';
+    // The token is now based on bcrypt hash
     const strAndUpper = (input) => input.toString().toUpperCase();
-    const passwordHash = user.hash || sha256(process.env[user.password]);
-    const sha = sha256(strAndUpper(user.user) + strAndUpper(passwordHash));
-    return strAndUpper(sha);
+    // For user password, expect user.hash to be a bcrypt hash
+    const passwordHash = user.hash || bcrypt.hashSync(process.env[user.password] || '', 10);
+    // Combine username (upper) and passwordHash into a token and hash with bcrypt
+    const tokenSource = strAndUpper(user.user) + strAndUpper(passwordHash);
+    // Hash tokenSource with bcrypt (use a constant salt for tokens, not ideal, but better than SHA)
+    // Alternatively, use an HMAC or random token
+    return bcrypt.hashSync(tokenSource, 10);
   };
   if (password.startsWith('Bearer ')) {
     const token = password.slice('Bearer '.length);
     const users = loadUserConfig();
-    return users.some(user => generateUserToken(user) === token);
+    // For tokens, compare using bcrypt.compareSync
+    return users.some(user => bcrypt.compareSync(token, generateUserToken(user)));
   } else {
     const users = loadUserConfig();
-    const userHash = sha256(password);
+    // The password is compared to a stored bcrypt hash
     return users.some(user => (
-      user.user.toLowerCase() === username.toLowerCase() && user.hash.toUpperCase() === userHash
+      user.user.toLowerCase() === username.toLowerCase() && bcrypt.compareSync(password, user.hash)
     ));
   }
 }
