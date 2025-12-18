@@ -21,6 +21,7 @@ const yaml = require('js-yaml');
 const express = require('express');
 const basicAuth = require('express-basic-auth');
 const history = require('connect-history-api-fallback');
+const rateLimit = require('express-rate-limit');
 
 /* Kick of some basic checks */
 require('./services/update-checker'); // Checks if there are any updates available, prints message
@@ -209,9 +210,15 @@ const app = express()
   .use(express.static(path.join(__dirname, 'public'), { index: 'initialization.html' }))
   .use(history())
   // If no other route is matched, serve up the index.html with a 404 status
-  .use((req, res) => {
-    res.status(404).sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
+  .use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // limit each IP to 100 requests per windowMs
+    }),
+    (req, res) => {
+      res.status(404).sendFile(path.join(__dirname, 'dist', 'index.html'));
+    }
+  );
 
 /* Create HTTP server from app on port, and print welcome message */
 http.createServer(app)
