@@ -7,6 +7,8 @@
 const axios = require('axios');
 const { URL } = require('url');
 const punycode = require('punycode/'); // Punycode for IDN normalization
+const dns = require('dns').promises;
+const net = require('net');
 
 // Define allow-list of permitted hostnames, normalized to lower-case punycode
 const RAW_ALLOWED_HOSTNAMES = [
@@ -51,11 +53,90 @@ module.exports = (req, res) => {
     res.status(403).send({ error: 'Target hostname is not allowed' });
     return;
   }
-  // Only allow https protocol (could allow http if strictly necessary)
-  if (parsed.protocol !== 'https:') {
-    res.status(400).send({ error: 'Only HTTPS protocol is allowed' });
-    return;
+
+  // Prevent SSRF bypass via DNS: Block if hostname resolves to private/local IP
+  function isPrivateAddress(ip) {
+    // IPv4
+    if (net.isIPv4(ip)) {
+      if (ip.startsWith('10.') ||
+          ip.startsWith('127.') ||
+          ip.startsWith('169.254.') ||
+          ip.startsWith('172.16.') || ip.startsWith('172.17.') || ip.startsWith('172.18.') || ip.startsWith('172.19.') ||
+          ip.startsWith('172.2') || // covers 172.20-172.31. care: doesn't match 172.2[0-9].*
+          ip.startsWith('192.168.') ) {
+        return true;
+      }
+    }
+    // IPv6
+    if (net.isIPv6(ip)) {
+      if (ip === '::1' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80')) {
+        return true;
+      }
+    }
+    return false;
   }
+
+  // Do async DNS validation before proceeding
+  return dns.lookup(hostname, { all: true }).then((addrs) => {
+    if (addrs.some(a => isPrivateAddress(a.address))) {
+      res.status(403).send({ error: 'Target hostname resolves to private/internal IP (not allowed)' });
+      return;
+    }
+    // Only allow https protocol (could allow http if strictly necessary)
+    if (parsed.protocol !== 'https:') {
+      res.status(400).send({ error: 'Only HTTPS protocol is allowed' });
+      return;
+    }
+    // Optionally, only allow default port
+    if (parsed.port && parsed.port !== '443') {
+      res.status(400).send({ error: 'Only default HTTPS port (443) is allowed' });
+      return;
+    }
+    // Disallow path traversal in path (also catch URL-encoded traversal)
+    const decodePath = decodeURIComponent(parsed.pathname);
+    if (parsed.pathname.includes('..') || decodePath.includes('..')) {
+      res.status(400).send({ error: 'Path traversal is not allowed in the URL path' });
+      return;
+    }
+    // Optionally, reject URLs with userinfo
+    if (parsed.username || parsed.password) {
+      res.status(400).send({ error: 'User information in URL is not allowed' });
+      return;
+    }
+    // Optionally, reject fragments
+    if (parsed.hash && parsed.hash !== "") {
+      res.status(400).send({ error: 'URL fragments are not allowed' });
+      return;
+    }
+    // Apply any custom headers, if needed; fail on parse error
+    let headers = {};
+    if (req.header('CustomHeaders')) {
+      try {
+        headers = JSON.parse(req.header('CustomHeaders'));
+      } catch (e) {
+        res.status(400).send({ error: 'Malformed CustomHeaders JSON' });
+        return;
+      }
+    }
+
+    // Prepare the request
+    const requestConfig = {
+      method: req.method,
+      url: parsed.origin + parsed.pathname + parsed.search,
+      data: req.body,
+      headers,
+    };
+
+    // Make the request, and respond with result
+    axios.request(requestConfig)
+      .then((response) => {
+        res.status(200).send(response.data);
+      }).catch((error) => {
+        res.status(500).send({ error });
+      });
+  }).catch((err) => {
+    res.status(500).send({ error: 'DNS resolution failed' });
+  });
   // Optionally, only allow default port
   if (parsed.port && parsed.port !== '443') {
     res.status(400).send({ error: 'Only default HTTPS port (443) is allowed' });
