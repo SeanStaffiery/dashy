@@ -120,9 +120,14 @@ module.exports = (req, res) => {
     }
 
     // Prepare the request
+    // Explicitly reconstruct a safe URL (never trust origin/protocol/port from user)
+    const safeUrl =
+      'https://' + hostname +
+      parsed.pathname +
+      parsed.search;
     const requestConfig = {
       method: req.method,
-      url: parsed.origin + parsed.pathname + parsed.search,
+      url: safeUrl,
       data: req.body,
       headers,
     };
